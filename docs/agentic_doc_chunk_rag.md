@@ -33,14 +33,14 @@ graph TD
     E --> F([Output])
 
     style A fill:#2A2A2A,stroke:#666,stroke-width:2px,color:#fff
-    style B fill:#b37300,stroke:#333,stroke-width:2px,color:#fff
+    style B fill:#FFA500,stroke:#333,stroke-width:2px,color:#000
     style C fill:#800080,stroke:#333,stroke-width:2px,color:#fff
-    style D fill:#b37300,stroke:#333,stroke-width:2px,color:#fff
-    style E fill:#b37300,stroke:#333,stroke-width:2px,color:#fff
+    style D fill:#FFA500,stroke:#333,stroke-width:2px,color:#000
+    style E fill:#FFA500,stroke:#333,stroke-width:2px,color:#000
     style F fill:#2A2A2A,stroke:#666,stroke-width:2px,color:#fff
     style Legend fill:#2A2A2A,color:#fff,stroke:#666
     
-    classDef llm fill:#b37300,stroke:#333,stroke-width:2px,color:#fff
+    classDef llm fill:#FFA500,stroke:#333,stroke-width:2px,color:#000
     classDef retrieval fill:#800080,stroke:#333,stroke-width:2px,color:#fff
     classDef default color:#fff
 ```
