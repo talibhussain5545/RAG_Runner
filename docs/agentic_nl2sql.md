@@ -13,6 +13,11 @@ graph TD
     E --> F[Review]
     F -->|Need Retry| D
     F -->|Complete| G[Final Result]
+    
+    classDef llm fill:#FFA500,stroke:#333,stroke-width:2px,color:#000;
+    classDef vector fill:#800080,stroke:#333,stroke-width:2px,color:#fff;
+    class B,D,F llm;
+    class C vector;
 ```
 
 
