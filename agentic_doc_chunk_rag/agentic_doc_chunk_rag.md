@@ -1,5 +1,3 @@
-
-
 # Agentic Document Search System
 
 This system implements an intelligent document search approach that iteratively refines searches based on content gaps identified in the results. It uses a combination of vector-based search and LLM-powered analysis to ensure comprehensive information retrieval.
@@ -27,7 +25,7 @@ graph TD
     • Categorize valid/invalid
     • Make decision"]
     
-    D -->|retry + add valid sources| B
+    D -->|retry + persist vetted sources| B
     D -->|finalize| E([Synthesize final answer])
     
     E --> F([Output])
@@ -44,7 +42,6 @@ graph TD
     classDef retrieval fill:#800080,stroke:#333,stroke-width:2px,color:#fff
     classDef default color:#fff
 ```
-
 
 The system maintains the following state throughout the search process:
 
@@ -146,22 +143,10 @@ Let's walk through an example search for "Show me financials for 2024":
 - **Clear Separation**: Keeps track of valid vs invalid results
 - **Thought Process Logging**: Maintains reasoning chain for transparency
 
-## Usage
+## Setup & Usage
 
-```python
-# Initialize the system
-graph = build_graph()
+1. Make sure you have your virtual environment setup and activated. Update your example.env file with your environment variables and rename the file to ".env". Langsmith is optional, but if you want to view the traces, you will need to request an API and follow the setup instructions, then update your environment variables.
+2. If you don't already have an AI Search Index, see the following repo for samples & examples: [https://github.com/DanGiannone1/samples/tree/main/ai_search](https://github.com/DanGiannone1/samples/tree/main/ai_search)
+3. Once your index is created and populated, adjust the fields in this script to match your index fields
+4. Run the script `agentic_doc_chunk_rag.py` and start asking questions about your data
 
-# Process a query
-final_state = graph.invoke(ChatState(
-    user_input="Show me financials for 2024",
-    current_results=[],
-    vetted_results=[],
-    discarded_results=[],
-    processed_ids=set(),
-    reviews=[],
-    final_answer=None
-))
-
-print(final_state["final_answer"])
-```

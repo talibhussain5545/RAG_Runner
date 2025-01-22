@@ -1,3 +1,4 @@
+# agentic_doc_chunk_rag.py
 from azure.search.documents import SearchClient
 from azure.search.documents.models import VectorizedQuery
 from azure.core.credentials import AzureKeyCredential
@@ -8,13 +9,14 @@ from dotenv import load_dotenv
 import os
 from langgraph.graph import StateGraph, START, END
 from typing import Dict, Any, TypedDict, Set
+from langsmith import traceable
 
 load_dotenv()
 
 # Azure Search configuration
 ai_search_endpoint = os.environ["AZURE_SEARCH_ENDPOINT"]
 ai_search_key = os.environ["AZURE_SEARCH_KEY"]
-ai_search_index = "agentic-doc-index"
+ai_search_index = os.environ["AZURE_SEARCH_INDEX"]
 
 # Azure OpenAI configuration
 aoai_deployment = os.getenv("AOAI_DEPLOYMENT")
@@ -23,12 +25,16 @@ aoai_endpoint = os.getenv("AOAI_ENDPOINT")
 
 search_client = SearchClient(ai_search_endpoint, ai_search_index, AzureKeyCredential(ai_search_key))
 
+MAX_ATTEMPTS = 3
+NUM_SEARCH_RESULTS = 5
+K_NEAREST_NEIGHBORS = 30
+
 # Type Definitions
 class SearchResult(TypedDict):
     id: str
     content: str
-    filepath: str
-    chunk_number: int
+    sourceFileName: str
+    sourcePages: int
     score: float
 
 class ReviewDecision(BaseModel):
@@ -37,7 +43,6 @@ class ReviewDecision(BaseModel):
     valid_results: List[int]  # Indices of valid results
     invalid_results: List[int]  # Indices of invalid results
     decision: Literal["retry", "finalize"]
-    missing_aspects: str  # What information we still need if retrying
 
 class ChatState(TypedDict):
     """Complete state of the conversation"""
@@ -47,7 +52,9 @@ class ChatState(TypedDict):
     discarded_results: List[SearchResult]
     processed_ids: Set[str]  # Track all processed document IDs
     reviews: List[str]  # Thought processes from reviews
+    decisions: List[str]  # Store the actual decisions
     final_answer: str | None
+    attempts: int  # Track number of search attempts
 
 # LLM Setup
 llm = AzureChatOpenAI(
@@ -63,18 +70,113 @@ llm = AzureChatOpenAI(
 
 review_llm = llm.with_structured_output(ReviewDecision)
 
-
 embeddings_model = AzureOpenAIEmbeddings(
     azure_deployment="text-embedding-ada-002",
     api_key=aoai_key,
     azure_endpoint=aoai_endpoint
 )
 
+def format_search_results(results: List[SearchResult]) -> str:
+    """Format search results into a nicely formatted string.
+    
+    Args:
+        results: List of SearchResult objects
+        
+    Returns:
+        str: Formatted string containing all search results
+    """
+    output_parts = ["\n=== Search Results ==="]
+    
+    for i, result in enumerate(results, 1):
+        result_parts = [
+            f"\nResult #{i}",
+            "=" * 80,
+            f"ID: {result['id']}",
+            f"Source File: {result['sourceFileName']}",
+            f"Source Pages: {result['sourcePages']}",
+            "\n<Start Content>",
+            "-" * 80,
+            result['content'],
+            "-" * 80,
+            "<End Content>"
+        ]
+        output_parts.extend(result_parts)
+    
+    # Join all parts with newlines
+    formatted_output = "\n".join(output_parts)
+    
+    # For convenience, you can still print the results if needed
+    print(formatted_output)
+    
+    return formatted_output
+
+@traceable(run_type="retriever", name="run_search")
+def run_search(search_query: str, processed_ids: Set[str]) -> List[SearchResult]:
+    """
+    Perform a search using Azure Cognitive Search with both semantic and vector queries.
+    
+    Args:
+        search_query (str): The search query to use
+        processed_ids (Set[str]): Set of already processed document IDs to exclude
+        
+    Returns:
+        List[SearchResult]: List of search results
+    """
+    # Generate vector embedding for the query
+    query_vector = embeddings_model.embed_query(search_query)
+    
+    vector_query = VectorizedQuery(
+        vector=query_vector,
+        k_nearest_neighbors=K_NEAREST_NEIGHBORS,
+        fields="contentVector"
+    )
+    
+    # Create filter for excluding processed documents
+    filter_str = None
+    if processed_ids:
+        ids_string = ','.join(processed_ids)
+        filter_str = f"not search.in(id, '{ids_string}', ',')"
+    else:
+        filter_str = None
+
+    
+
+    print(f"Filter string: {filter_str}")
+    # Perform the search
+    results = search_client.search(
+        search_text=search_query,
+        vector_queries=[vector_query],
+        filter=filter_str,
+        select=["id", "content", "sourceFileName", "sourcePages"],
+        top=NUM_SEARCH_RESULTS
+    )
+    
+    # Convert results to SearchResult type
+    search_results = []
+    for result in results:
+        search_result = SearchResult(
+            id=result["id"],
+            content=result["content"],
+            sourceFileName=result["sourceFileName"],
+            sourcePages=result["sourcePages"],
+            score=result["@search.score"]
+        )
+        search_results.append(search_result)
+    
+
+    return search_results
+
 def generate_search_query(state: ChatState) -> ChatState:
     """
     Generate an optimized search query based on the current state.
+    Increments the attempt counter on each search.
     """
-    query_prompt = """Generate a focused search query based on the user's question and what we've learned from previous searches.
+    # Increment attempts counter (will be 1 on first attempt)
+    state["attempts"] += 1
+    print(f"\nAttempt {state['attempts']} of {MAX_ATTEMPTS}")
+    
+    query_prompt = """Generate a concise,focused search query based on the user's question and what we've learned from previous searches (if any). Try to structure your query to match what we would find in the actual text.
+    E.g. if the user asks "What is the company's revenue?", a good query might be "company revenue" or "company revenue 2024" or "company revenue 2024 Q1"
 
     User Question: {user_input}
 
@@ -98,91 +200,74 @@ def generate_search_query(state: ChatState) -> ChatState:
     search_query = llm.invoke(messages).content
     print(f"\nGenerated search query: {search_query}")
     
-    # Perform the search with the generated query
-    query_vector = embeddings_model.embed_query(search_query)
-    
-    vector_query = VectorizedQuery(
-        vector=query_vector,
-        k_nearest_neighbors=5,
-        fields="contentVector"
+    # Use the new search function
+    state["current_results"] = run_search(
+        search_query=search_query,
+        processed_ids=state["processed_ids"]
     )
     
-    # Filter out already processed documents
-    filter_str = None
-    if state["processed_ids"]:
-        id_list = "','".join(state["processed_ids"])
-        filter_str = f"id not in ('{id_list}')"
-    
-    results = search_client.search(
-        search_text=search_query,
-        vector_queries=[vector_query],
-        filter=filter_str,
-        select=["id", "content", "filepath", "chunk_number"],
-        top=5
-    )
-    
-    current_results = []
-    for result in results:
-        search_result = SearchResult(
-            id=result["id"],
-            content=result["content"],
-            filepath=result["filepath"],
-            chunk_number=result["chunk_number"],
-            score=result["@search.score"]
-        )
-        current_results.append(search_result)
-    
-    state["current_results"] = current_results
     return state
 
 def review_results(state: ChatState) -> ChatState:
     """
     Review current results and categorize them as valid or invalid.
     """
-    review_prompt = """Review these search results and determine which are relevant to answering the user's question.
+    review_prompt = """Review these search results and determine which contain relevant information to answering the user's question.
 
-    User Question: {question}
-
-    Current Search Results:
-    {current_results}
-
-    Previously Vetted Results:
-    {vetted_results}
-
-    Previous Reviews:
-    {reviews}
+    Your input will contain the following information:
+    
+    1. User Question: The question the user asked
+    2. Current Search Results: The results of the current search
+    3. Previously Vetted Results: The results we've already vetted
+    4. Previous Reviews: The reviews we've already done
 
     Respond with:
-    1. thought_process: Your analysis of the results
-    2. valid_results: List of indices (0-4) for useful results
-    3. invalid_results: List of indices (0-4) for irrelevant results
+    1. thought_process: Your analysis of the results. What is relevant and what is not? Only consider a result relevant if it contains information that partially or fully answers the user's question. If we don't have enough information, be clear about what we are missing.
+    2. valid_results: List of indices (0-N) for useful results
+    3. invalid_results: List of indices (0-N) for irrelevant results
     4. decision: Either "retry" if we need more info or "finalize" if we can answer the question
-    5. missing_aspects: What specific information we still need (if retrying)
+
+    """
+    
+    # Format the current results
+    current_results_formatted = format_search_results(state["current_results"]) if state["current_results"] else "No current results."
+    
+    # Format the vetted results
+    vetted_results_formatted = format_search_results(state["vetted_results"]) if state["vetted_results"] else "No previously vetted results."
+    
+    llm_input = """
+    User Question: {question}
+    
+    Current Search Results:
+    {current_results}
+    
+    Previously Vetted Results:
+    {vetted_results}
+    
+    Previous Reviews:
+    {reviews}
     """
     
     messages = [
         {"role": "system", "content": review_prompt},
-        {"role": "user", "content": review_prompt.format(
+        {"role": "user", "content": llm_input.format(
             question=state["user_input"],
-            current_results="\n".join([
-                f"{i}. {r['content'][:200]}..." 
-                for i, r in enumerate(state["current_results"])
-            ]),
-            vetted_results="\n".join([
-                f"- {r['content'][:200]}..." 
-                for r in state["vetted_results"]
-            ]) if state["vetted_results"] else "None yet",
+            current_results=current_results_formatted,
+            vetted_results=vetted_results_formatted,
             reviews="\n".join(state["reviews"])
         )}
     ]
     
     review = review_llm.invoke(messages)
+    print(f"### Attempt {state['attempts']} Review ###")
     print(f"\nReview thought process: {review.thought_process}")
+    print(f"Valid Results: {review.valid_results}")
+    print(f"Invalid Results: {review.invalid_results}")
     print(f"Decision: {review.decision}")
     
     # Update state based on review
     state["reviews"].append(review.thought_process)
-    
+    state["decisions"].append(review.decision)
     # Add valid results to vetted_results
     for idx in review.valid_results:
         result = state["current_results"][idx]
@@ -198,37 +283,30 @@ def review_results(state: ChatState) -> ChatState:
     # Clear current results
     state["current_results"] = []
     
-    if review.decision == "finalize":
-        # Generate final answer
-        final_prompt = """Create a comprehensive answer to the user's question using the vetted search results.
-
-        User Question: {question}
-
-        Vetted Results:
-        {vetted_results}
-
-        Provide:
-        1. thought_process: How you're synthesizing the information
-        2. answer: Clear, complete answer to the user's question
-        """
-        
-        messages = [
-            {"role": "system", "content": final_prompt},
-            {"role": "user", "content": final_prompt.format(
-                question=state["user_input"],
-                vetted_results="\n".join([
-                    f"- {r['content']}" for r in state["vetted_results"]
-                ])
-            )}
-        ]
-        
-        final = llm.invoke(messages)
-        state["final_answer"] = final.answer
-    
     return state
+
+def review_router(state: ChatState) -> str:
+    """Route to either retry search or go to finalize node."""
+    
+    # First check attempts to avoid unnecessary processing
+    if state["attempts"] >= MAX_ATTEMPTS:
+        print(f"\nReached maximum attempts ({MAX_ATTEMPTS}). Proceeding to finalize with current results.")
+        return "finalize"
+    
+    # Check the last decision directly
+    latest_decision = state["decisions"][-1]
+    if latest_decision == "finalize":
+        return "finalize"
+    
+    return "retry"
 
 def finalize(state: ChatState) -> ChatState:
     """Generate final answer from vetted results."""
+    # Add a note about hitting max attempts if applicable
+    max_attempts_note = ""
+    if state["attempts"] >= MAX_ATTEMPTS and not any("decision: finalize" in review.lower() for review in state["reviews"]):
+        max_attempts_note = "\n\nNote: This answer was generated after reaching the maximum number of search attempts. It may be incomplete based on available information."
+    
     final_prompt = """Create a comprehensive answer to the user's question using these vetted results.
 
     User Question: {question}
@@ -236,7 +314,7 @@ def finalize(state: ChatState) -> ChatState:
     Vetted Results:
     {vetted_results}
 
-    Synthesize these results into a clear, complete answer."""
+    Synthesize these results into a clear, complete answer. If there were no vetted results, say you couldn't find any relevant information to answer the question."""
     
     messages = [
         {"role": "system", "content": final_prompt},
@@ -248,16 +326,8 @@ def finalize(state: ChatState) -> ChatState:
         )}
     ]
     
-    state["final_answer"] = llm.invoke(messages).content
+    state["final_answer"] = llm.invoke(messages).content + max_attempts_note
     return state
-
-def review_router(state: ChatState) -> str:
-    """Route to either retry search or go to finalize node."""
-    # Check the decision from the last review
-    last_review = state["reviews"][-1]
-    if "decision: finalize" in last_review.lower():
-        return "finalize"
-    return "retry"
 
 def build_graph() -> StateGraph:
     """Build the workflow graph."""
@@ -303,7 +373,7 @@ if __name__ == "__main__":
             print("Please enter a valid question.")
             continue
         
-        # Initialize state
+        # Initialize state with attempts counter at 0
         initial_state = ChatState(
             user_input=user_input,
             current_results=[],
@@ -311,7 +381,9 @@ if __name__ == "__main__":
             discarded_results=[],
             processed_ids=set(),
             reviews=[],
-            final_answer=None
+            decisions=[],
+            final_answer=None,
+            attempts=0
         )
         
         # Process query

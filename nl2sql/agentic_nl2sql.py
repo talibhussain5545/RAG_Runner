@@ -1,4 +1,4 @@
-#test.py
+#agentic_nl2sql.py
 from azure.search.documents import SearchClient
 from azure.search.documents.models import VectorizedQuery
 from azure.core.credentials import AzureKeyCredential
@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 import os
 from langgraph.graph import StateGraph, START, END
 from typing import Dict, Any, TypedDict
-from IPython.display import Image, display
 from typing import Annotated
 from operator import add
 
@@ -19,6 +18,7 @@ from operator import add
 load_dotenv()
 
 # Configuration and clients setup
+MAX_ATTEMPTS = 3  # Maximum number of attempts for SQL query generation and execution
 ai_search_endpoint = os.environ["AZURE_SEARCH_ENDPOINT"]
 ai_search_key = os.environ["AZURE_SEARCH_KEY"]
 ai_search_index = "amc-sql-data-v"
@@ -398,7 +398,7 @@ Review Agent Analysis:
     response = reasoning_llm.invoke(messages)
     attempt_number = len(state["attempt_history"]) + 1
     
-    print(f"Attempt {attempt_number} of 3:")
+    print(f"Attempt {attempt_number} of {MAX_ATTEMPTS}:")
     print("###SQL Agent Thought Process###\n ", response.thought_process)
     print("###Generated SQL###\n", response.answer)
         
@@ -462,7 +462,7 @@ def review(state: ChatInteractionState) -> ChatInteractionState:
     if not current_attempt:
         raise ValueError("No current attempt found")
 
-    review_prompt = """Analyze the user question, SQL query, and results to determine if we found the correct answer. Answer as follows:
+    review_prompt = f"""Analyze the user question, SQL query, and results to determine if we found the correct answer. Answer as follows:
     
     1. thought_process: What do you see?  Are we fully addressing the user's question? If not, what additional information would we need to provide a complete answer? Give a recommendation to the SQL agent on what to try next (such as adding a group by or querying on a different column)
     2. answer: If we found the answer and feel we have holistically and definitively answered the query, provide a clear, concise answer to the user's question using the query results. If we got an error or are missing data from the user's question, output exactly "retry".
@@ -470,7 +470,7 @@ def review(state: ChatInteractionState) -> ChatInteractionState:
     Tips:
 
     - If we got 0 records, look back at the entity dimensions info and reflect on them. Is it possible we picked the wrong dimension to query on?
-    - State what attempt you are on. You only get 3 attempts. If you are on the third attempt and you have some data, you MUST return that and consider it the true answer! 
+    - State what attempt you are on. You only get {MAX_ATTEMPTS} attempts. If you are on the {MAX_ATTEMPTS}th attempt and you have some data, you MUST return that and consider it the true answer! 
 
     """
     
@@ -509,7 +509,7 @@ Review Analysis:
     Query Results: {current_attempt["query_results"]}\n\n
    
 
-    Note - if you are on your 3rd attempt, you must return the data you have and consider it the true answer.
+    Note - if you are on your {MAX_ATTEMPTS}th attempt, you must return the data you have and consider it the true answer.
     """
 
     messages = [
@@ -540,8 +540,8 @@ def review_router(state: ChatInteractionState) -> str:
     latest_attempt = state["attempt_history"][-1]
     
     if state["review_answer"] == "retry":
-        if latest_attempt["attempt_number"] >= 3:
-            print("Maximum attempts reached (3). Ending process.")
+        if latest_attempt["attempt_number"] >= MAX_ATTEMPTS:
+            print(f"Maximum attempts reached ({MAX_ATTEMPTS}). Ending process.")
             return END
         return "retry"
     return END
