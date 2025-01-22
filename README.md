@@ -15,6 +15,33 @@ Agentic RAG extends traditional RAG systems by adding multiple attempts with ref
 - Refine their retrieval approach based on previous attempts
 - Self-correct when errors or gaps are detected
 
+## Why Agentic RAG?
+
+Traditional, single-attempt RAG systems often end up yielding less-than-ideal results. I've written a number of articles on the topic:
+
+https://www.linkedin.com/pulse/my-first-rag-use-case-key-insights-lessons-learned-dan-giannone-sa7ne/?trackingId=6sVQ3wJ%2B6RNZRCNlQa3eBQ%3D%3D
+https://www.linkedin.com/pulse/evaluating-rag-applications-deep-dive-dan-giannone-qonce/?trackingId=TLi3D9S4DpMr1o%2BsVTqwpg%3D%3D
+https://www.linkedin.com/pulse/non-technical-challenges-rag-dan-giannone-st5ze/?trackingId=QixAT0gS9m5uRFsOr%2BnYIA%3D%3D
+
+Agentic RAG greatly improves the quality of the results by bringing agentic behavior to the retrieval process. We give the system the ability to make multiple attempts, reflect, adjust, and iterate. As with a human, doing these things will yield a much higher quality result. 
+
+## Common Complaints
+
+- "This will impact cost and latency"
+
+In my opinion, accuracy trumps all other considerations when building Gen AI applications. If a user does not feel confident in the results, they will just stop using the application and then your efforts to reduce latency and cost are for naught. We need to establish a high degree of confidence in the results before we try to optimize for other considerations. 
+
+Additionally, we can put different LLMs in different roles to optimize for cost and latency. For example, we can use a smaller LLM for the final synthesis of the results, but use a larger LLM for the review and  reflection.
+
+- "Agentic RAG is a band-aid solution; We should be able to solve this with a single attempt"
+
+Partially true. You should put in the work to optimize your retrieval process so its as accurate as possible on the first attempt. But in reality, data is messy and complex with interconnected relationships. It's unlikely that a single attempt will yield a complete and accurate result at a rate that is acceptable to users.  
+
+- "This will hamper the user experience"
+
+We should be building UIs for the Agent Era. For example, a UI that shows the agent working through the retrieval & iteration process will be much more engaging than a traditional "Loading..." animation. 
+
+
 ## Key Features
 
 Both implementations share core "agentic" characteristics:
