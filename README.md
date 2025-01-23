@@ -76,7 +76,7 @@ Both implementations share core "agentic" characteristics:
 
 Both systems follow a similar high-level pattern while specializing for their specific use cases:
 ```mermaid
-Graph TD
+graph TD
     A[User Input] --> B[Initial Processing]
     B --> C[Retrieval/Generation]
     C --> D[Review & Analysis]
