@@ -1,80 +1,71 @@
-# Agentic RAG Implementations
+# RAG_Runner
 
-This repository contains multiple implementations of Agentic RAG (Retrieval-Augmented Generation) systems, each designed for different data sources.
+This repository provides multiple implementations of Agentic Retrieval-Augmented Generation (RAG) systems, designed for both unstructured documents and structured databases.
 
-1. **Document Search**: Extends traditional RAG against document chunks with a multi-attempt, iterative refinement process.
-2. **Natural Language to SQL (NL2SQL)**: Extends traditional NL2SQL by adding reflection across multiple attempts.
+---
 
-## What is Agentic RAG?
+## Overview
 
-Agentic RAG extends traditional RAG systems by adding multiple attempts with reflection and iteration. Instead of performing a single retrieval-generation cycle, these systems can:
+**Agentic RAG** enhances traditional RAG pipelines by introducing **multi-attempt, reflective reasoning**. Instead of completing the retrieval-generation cycle in a single pass, these systems:
 
-- Maintain state across multiple iterations
-- Analyze the completeness and quality of retrieved information
-- Make decisions about whether to continue searching
-- Refine their retrieval approach based on previous attempts
-- Self-correct when errors or gaps are detected
+- Reflect on intermediate results
+- Maintain state across iterations
+- Adjust their retrieval strategies
+- Self-correct when outputs are incomplete or inaccurate
+
+---
+
+## Implementations
+
+1. **Document Search**
+   Traditional RAG with iterative refinement for document-based knowledge.
+
+2. **Natural Language to SQL (NL2SQL)**
+   Agentic reasoning for accurate SQL generation, with multi-step validation and reflection.
+
+---
 
 ## Why Agentic RAG?
 
-Traditional, single-attempt RAG systems often yield less-than-ideal results. I've written several articles exploring this topic in depth:
+Conventional RAG pipelines often miss important context due to:
 
-- [My First RAG Use Case: Key Insights & Lessons Learned](https://www.linkedin.com/pulse/my-first-rag-use-case-key-insights-lessons-learned-dan-giannone-sa7ne/)
-- [Evaluating RAG Applications: A Deep Dive](https://www.linkedin.com/pulse/evaluating-rag-applications-deep-dive-dan-giannone-qonce/)
-- [Non-Technical Challenges of RAG](https://www.linkedin.com/pulse/non-technical-challenges-rag-dan-giannone-st5ze/)
+- One-shot retrievals
+- Lack of intermediate reasoning
+- Limited result validation
 
-Agentic RAG greatly improves result quality by bringing agentic behavior to the retrieval process. We give the system the ability to make multiple attempts, reflect, adjust, and iterate. As with a human, doing these things yields a much higher quality result. 
+## Addressing Common Concerns
 
-## Common Complaints
+### "This will increase cost and latency"
 
-### "This will impact cost and latency"
+Accuracy is the foundation of trust in GenAI apps. If the user can’t trust the output, low latency and cost savings don’t matter. To optimize:
 
-In my opinion, accuracy trumps all other considerations when building Gen AI applications. If users don't feel confident in the results, they'll stop using the application—making your efforts to reduce latency and cost meaningless. We need to establish a high degree of confidence in the results before optimizing other considerations.
+- Use **smaller models** for initial synthesis
+- Use **larger models** only for complex reflection
 
-Additionally, we can put different LLMs in different roles to optimize for cost and latency:
-- Use smaller LLMs for final result synthesis
-- Use larger LLMs for review and reflection
+### "Shouldn’t a well-designed RAG work in one shot?"
 
-### "Agentic RAG is a band-aid solution; We should be able to solve this with a single attempt"
+In theory, yes. In practice, real-world data is messy, and single-attempt retrieval often fails to produce complete results. Iterative refinement mitigates this.
 
-This is partially true. You should optimize your retrieval process to be as accurate as possible on the first attempt. However, in reality:
-- Data is often messy and complex
-- Information has interconnected relationships
-- A single attempt rarely yields complete and accurate results at an acceptable rate
+### "Will this slow down the user experience?"
 
-### "This will hamper the user experience"
+Agentic systems are best paired with modern UIs that **visualize reasoning steps**. Rather than loading spinners, show progress through thought stages to increase user engagement.
 
-We should be building UIs for the Agent Era. For example, a UI that shows the agent working through the retrieval & iteration process will be much more engaging than a traditional "Loading..." animation. 
+---
 
-## Key Features
+## Shared System Features
 
-Both implementations share core "agentic" characteristics:
+All implementations in this repo follow a common agentic architecture:
 
-- **Stateful Processing**: Maintains context and progress across iterations
-- **Iterative Refinement**: Multiple attempts to get complete and accurate results
-- **Self-Review**: Analyzes own outputs for completeness and correctness
-- **Thought Process Logging**: Maintains clear reasoning chains for transparency
-- **Smart Filtering**: Avoids reprocessing previously seen information
+- **Stateful memory** across steps
+- **Iterative attempts** with feedback loops
+- **Self-assessment** for completeness and accuracy
+- **Thought process logging** for transparency
+- **Smart filtering** to avoid redundant processing
 
-## Implementation Summaries
+---
 
-### Document Search System
-- Focuses on comprehensive document retrieval
-- Maintains lists of vetted and discarded results
-- Uses LLM for query generation and result synthesis
-- Iterates until all relevant information is found
-- [See implementation-specific documentation here](./agentic_doc_chunk_rag/agentic_doc_chunk_rag.md)
+## Architecture Diagram
 
-### Natural Language to SQL (NL2SQL)
-- Converts natural language to SQL queries
-- Uses vector search to map user terms to database values
-- Supports domain-specific knowledge integration
-- Iteratively refines SQL queries until correct
-- [See implementation-specific documentation here](./nl2sql/agentic_nl2sql.md)
-
-## Architecture Overview
-
-Both systems follow a similar high-level pattern while specializing for their specific use cases:
 ```mermaid
 graph TD
     A[User Input] --> B[Initial Processing]
@@ -84,37 +75,57 @@ graph TD
     D -->|Complete| E[Final Output]
 ```
 
+---
+
+## Implementation Details
+
+### 1. Document Search (Unstructured RAG)
+
+- Retrieves document chunks iteratively
+- Maintains "accepted" and "discarded" chunk lists
+- Synthesizes results using LLM
+- Stops when confidence or coverage is sufficient
+
+### 2. NL2SQL (Structured RAG)
+
+- Converts natural language into executable SQL queries
+- Maps ambiguous terms using vector similarity
+- Integrates domain knowledge from `.txt` files
+- Refines queries across multiple iterations
+  → [Documentation](./nl2sql/agentic_nl2sql.md)
+
+---
+
 ## Getting Started
 
-1. Choose the implementation that matches your use case:
-   - Use **Document Search** for unstructured document retrieval and synthesis
-   - Use **NL2SQL** for structured database querying with natural language
+### Step 1: Choose Your Use Case
 
-2. Follow the setup instructions in the respective implementation directories:
-   - [Document Search Setup](./agentic_doc_chunk_rag/agentic_doc_chunk_rag.md#setup--usage)
-   - [NL2SQL Setup](./nl2sql/agentic_nl2sql.md#setup--usage)
+| Use Case               | Implementation           |
+| ---------------------- | ------------------------ |
+| Unstructured documents | `agentic_doc_chunk_rag/` |
+| SQL database querying  | `nl2sql/`                |
+
+### Step 2: Follow Setup Instructions
+
+- [Document RAG Setup](./agentic_doc_chunk_rag/agentic_doc_chunk_rag.md#setup--usage)
+- [NL2SQL Setup](./nl2sql/agentic_nl2sql.md#setup--usage)
+
+---
 
 ## Repository Structure
+
 ```plaintext
 agentic-rag/
-├── README.md                         # This file
-├── requirements.txt                  # Main requirements file
-├── example.env                       # Example environment variables
-├── .env                             # Environment variables (not in repo)
-├── agentic_doc_chunk_rag/           # Document search implementation
-│   ├── agentic_doc_chunk_rag.md     # Implementation details
-│   └── agentic_doc_chunk_rag.py     # Main implementation
-└── nl2sql/                          # NL2SQL implementation
-    ├── agentic_nl2sql.md            # Implementation details
-    ├── agentic_nl2sql.py            # Main implementation
-    ├── vectorize-sql-data.py        # Data vectorization utility
-    └── domain_knowledge.txt         # Domain-specific knowledge
+├── README.md
+├── requirements.txt
+├── example.env
+├── .env                     # Local environment variables (ignored by Git)
+├── agentic_doc_chunk_rag/
+│   ├── agentic_doc_chunk_rag.md
+│   └── agentic_doc_chunk_rag.py
+└── nl2sql/
+    ├── agentic_nl2sql.md
+    ├── agentic_nl2sql.py
+    ├── vectorize-sql-data.py
+    └── domain_knowledge.txt
 ```
-
-## Contributing
-
-Contributions are welcome! Please read our contributing guidelines and submit pull requests for any enhancements, bug fixes, or documentation improvements.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
